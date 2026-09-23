@@ -6,7 +6,7 @@ on:
     paths:
       - 'DummyFrameworkApp/**'
       - '.github/workflows/dotnet-framework-pipeline.yml'
-      - '.github/action/dotnet-framework-build-deploy/action.yml'
+      - '.github/actions/dotnet-framework-build-deploy/action.yml'
   pull_request:
     branches: [ "main", "master"]
     paths:
