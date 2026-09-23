@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - master
-      - feature/feature/test
+      - feature/test
     paths:
       - 'DummyFrameworkApp/**'
       - '.github/workflows/dotnet-framework-pipeline.yml'
