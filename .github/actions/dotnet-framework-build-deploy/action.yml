@@ -51,16 +51,16 @@ runs:
       shell: pwsh
       run: |
         $publishPath = Join-Path $env:GITHUB_WORKSPACE "${{ inputs.publish-dir }}"
-        $zipPath = Join-Path$env:TEMP "publish.zip"
+        $zipPath = Join-Path $env:TEMP "publish.zip"
         
         Write-Host "Compressing $publishPath to$zipPath..." -ForegroundColor Cyan
-        if (Test-Path $zipPath) { Remove-Item$zipPath -Force }
+        if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
         Compress-Archive -Path "$publishPath\*" -DestinationPath $zipPath -Force
 
     - name: Deploy via WinRM (Transfer & Extract)
       shell: pwsh
       run: |
-        $zipPath = Join-Path$env:TEMP "publish.zip"
+        $zipPath = Join-Path $env:TEMP "publish.zip"
         $remoteZip = "C:\temp\publish.zip"
         
         # Setup Credentials & AllowUnencrypted on Runner Client
@@ -79,7 +79,7 @@ runs:
         Invoke-Command -Session $session -ScriptBlock {
           if (-not (Test-Path "C:\temp")) { New-Item -ItemType Directory -Path "C:\temp" -Force | Out-Null }
         }
-        Copy-Item -Path $zipPath -Destination $remoteZip -ToSession$session -Force
+        Copy-Item -Path $zipPath -Destination $remoteZip -ToSession $session -Force
 
         Write-Host "Extracting ZIP & Deploying on Target Server..." -ForegroundColor Cyan
         Invoke-Command -Session $session -ScriptBlock {
@@ -90,10 +90,10 @@ runs:
             # Nonaktifkan AppPool jika ada (opsional)
             # Stop-WebAppPool -Name "DummyFrameworkApp" -ErrorAction SilentlyContinue
 
-            if (-not (Test-Path $deployPath)) { New-Item -ItemType Directory -Path$deployPath -Force | Out-Null }
+            if (-not (Test-Path $deployPath)) { New-Item -ItemType Directory -Path $deployPath -Force | Out-Null }
             Remove-Item "$deployPath\*" -Recurse -Force -ErrorAction SilentlyContinue
             
-            Expand-Archive -Path $remoteZip -DestinationPath$deployPath -Force
+            Expand-Archive -Path $remoteZip -DestinationPath $deployPath -Force
             Remove-Item $remoteZip -Force
 
             # Jalankan kembali AppPool jika ada (opsional)

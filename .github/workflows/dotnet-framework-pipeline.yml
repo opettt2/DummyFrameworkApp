@@ -19,7 +19,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Execute Composite Build & Deploy Action
-        uses: ./.github/action/dotnet-framework-build-deploy
+        uses: ./.github/actions/dotnet-framework-build-deploy
         with:
           solution-path: 'DummyFrameworkApp.sln'
           build-configuration: 'Release'
