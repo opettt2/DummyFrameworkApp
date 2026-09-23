@@ -26,7 +26,7 @@ jobs:
     # Windows. Ganti "windows" (self-hosted) ke "windows-latest" kalau mau
     # pakai GitHub-hosted runner - tapi GitHub-hosted tidak akan bisa
     # menjangkau IIS on-prem kantor kamu, jadi cocoknya cuma untuk build/test.
-    runs-on: windows
+    runs-on: windows-latest
 
     timeout-minutes: 20
 
