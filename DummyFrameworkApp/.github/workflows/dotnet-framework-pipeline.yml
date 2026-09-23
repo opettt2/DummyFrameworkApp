@@ -1,0 +1,48 @@
+name: .NET Framework Dummy App - Build & Deploy
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    paths:
+      - 'DummyFrameworkApp/**'
+      - '.github/workflows/dotnet-framework-pipeline.yml'
+      - '.github/action/dotnet-framework-build-deploy/action.yml'
+  pull_request:
+    branches: [ "main", "master" ]
+    paths:
+      - 'DummyFrameworkApp/**'
+
+concurrency:
+  group: dotnet-framework-pipeline-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy Dummy Framework App
+    # Wajib Windows runner - MSBuild untuk web project & IIS cuma ada di
+    # Windows. Ganti "windows" (self-hosted) ke "windows-latest" kalau mau
+    # pakai GitHub-hosted runner - tapi GitHub-hosted tidak akan bisa
+    # menjangkau IIS on-prem kantor kamu, jadi cocoknya cuma untuk build/test.
+    runs-on: windows
+
+    timeout-minutes: 20
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Build & Deploy .NET Framework App
+      uses: ./.github/action/dotnet-framework-build-deploy
+      with:
+        solution-file: 'DummyFrameworkApp.sln'
+        msbuild-configuration: 'Release'
+        iis-site-name: 'DummyFrameworkApp'
+        iis-port: '8081'
+        deploy-path: 'C:\inetpub\wwwroot\DummyFrameworkApp'
+        # Deploy sungguhan cuma di push ke main/master. Pull request cuma
+        # divalidasi build-nya saja, supaya PR dari feature branch tidak
+        # ikut menimpa deployment production/staging yang sedang jalan.
+        deploy: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push' }}

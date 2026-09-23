@@ -1,0 +1,158 @@
+name: '.NET Framework Build & Deploy to IIS (Windows)'
+description: 'Composite action untuk build .NET Framework app dengan MSBuild dan deploy ke IIS di Windows Server'
+
+inputs:
+  solution-file:
+    description: 'Path ke file .sln'
+    required: false
+    default: 'DummyFrameworkApp.sln'
+  msbuild-configuration:
+    description: 'Build configuration (Debug/Release)'
+    required: false
+    default: 'Release'
+  iis-site-name:
+    description: 'Nama site di IIS'
+    required: true
+  iis-app-pool-name:
+    description: 'Nama Application Pool di IIS (kosongkan untuk pakai nama yang sama dengan iis-site-name)'
+    required: false
+    default: ''
+  iis-port:
+    description: 'Port binding untuk site IIS'
+    required: false
+    default: '8081'
+  deploy-path:
+    description: 'Physical path tujuan deploy di server Windows'
+    required: true
+  deploy:
+    description: 'Apakah step deploy ke IIS dieksekusi ("true"/"false"). Set false untuk build-only (mis. saat pull_request).'
+    required: false
+    default: 'true'
+
+runs:
+  using: "composite"
+  steps:
+    # 1. Setup MSBuild
+    # .NET Framework web project (non-SDK style csproj) TIDAK bisa dibuild
+    # pakai "dotnet build" - wajib pakai MSBuild penuh dari Visual Studio
+    # Build Tools (yang menyertakan Microsoft.WebApplication.targets).
+    # GitHub-hosted "windows-latest" sudah include ini; self-hosted Windows
+    # perlu install "Build Tools for Visual Studio" + workload
+    # "ASP.NET and web development" secara manual di server.
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    # 2. Restore NuGet packages (kalau project pakai packages.config)
+    # Di-skip otomatis kalau tidak ada packages.config, supaya action ini
+    # tetap reusable untuk project .NET Framework lain yang punya dependency.
+    - name: Restore NuGet packages
+      shell: pwsh
+      run: |
+        $packagesConfig = Get-ChildItem -Recurse -Filter "packages.config" -ErrorAction SilentlyContinue
+        if ($packagesConfig) {
+          Write-Host "packages.config ditemukan, menjalankan nuget restore..."
+          nuget restore "${{ inputs.solution-file }}"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "nuget restore gagal dengan exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
+        } else {
+          Write-Host "Tidak ada packages.config ditemukan, skip NuGet restore."
+        }
+
+    # 3. Build & Publish (MSBuild file-system publish)
+    # DeployOnBuild + WebPublishMethod=FileSystem menghasilkan folder publish
+    # siap-pakai (Web.config sudah di-transform sesuai configuration) tanpa
+    # perlu Web Deploy/msdeploy terinstall di runner maupun di server target.
+    - name: Build & Publish
+      shell: pwsh
+      run: |
+        $publishDir = Join-Path $env:GITHUB_WORKSPACE "_publish"
+        msbuild "${{ inputs.solution-file }}" `
+          /p:Configuration=${{ inputs.msbuild-configuration }} `
+          /p:DeployOnBuild=true `
+          /p:WebPublishMethod=FileSystem `
+          /p:publishUrl="$publishDir" `
+          /p:SkipInvalidConfigurations=true `
+          /verbosity:minimal
+        if ($LASTEXITCODE -ne 0) {
+          Write-Error "MSBuild gagal dengan exit code $LASTEXITCODE"
+          exit $LASTEXITCODE
+        }
+        echo "PUBLISH_DIR=$publishDir" >> $env:GITHUB_ENV
+
+    # 4. Deploy ke IIS
+    # Idempotent: app pool & site dibuat kalau belum ada, di-update kalau
+    # sudah ada. App pool distop dulu sebelum copy file supaya tidak ada
+    # file lock (DLL yang sedang dipakai proses w3wp.exe).
+    # Dilewati kalau input "deploy" bukan "true" (mis. build-only di PR).
+    - name: Deploy to IIS
+      if: inputs.deploy == 'true'
+      shell: pwsh
+      run: |
+        Import-Module WebAdministration
+
+        $siteName = "${{ inputs.iis-site-name }}"
+        $appPoolName = if ("${{ inputs.iis-app-pool-name }}" -ne "") { "${{ inputs.iis-app-pool-name }}" } else { $siteName }
+        $port = [int]"${{ inputs.iis-port }}"
+        $deployPath = "${{ inputs.deploy-path }}"
+
+        if (Test-Path "IIS:\AppPools\$appPoolName") {
+          Write-Host "Stopping app pool $appPoolName ..."
+          Stop-WebAppPool -Name $appPoolName -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 3
+        } else {
+          Write-Host "Creating app pool $appPoolName ..."
+          New-WebAppPool -Name $appPoolName
+          Set-ItemProperty "IIS:\AppPools\$appPoolName" -Name managedRuntimeVersion -Value "v4.0"
+        }
+
+        if (-not (Test-Path $deployPath)) {
+          New-Item -ItemType Directory -Path $deployPath -Force | Out-Null
+        }
+
+        # /MIR mirror: hapus file lama di target yang sudah tidak ada di
+        # publish output, supaya folder deploy tetap bersih dari sisa versi
+        # sebelumnya. Exit code robocopy >= 8 berarti error sungguhan.
+        robocopy "$env:PUBLISH_DIR" "$deployPath" /MIR /NFL /NDL /NJH /NJS
+        if ($LASTEXITCODE -ge 8) {
+          Write-Error "Robocopy gagal dengan exit code $LASTEXITCODE"
+          exit 1
+        }
+
+        if (-not (Test-Path "IIS:\Sites\$siteName")) {
+          Write-Host "Creating website $siteName ..."
+          New-Website -Name $siteName -PhysicalPath $deployPath -ApplicationPool $appPoolName -Port $port
+        } else {
+          Write-Host "Updating website $siteName ..."
+          Set-ItemProperty "IIS:\Sites\$siteName" -Name physicalPath -Value $deployPath
+          Set-ItemProperty "IIS:\Sites\$siteName" -Name applicationPool -Value $appPoolName
+        }
+
+        Start-WebAppPool -Name $appPoolName
+        Start-Website -Name $siteName
+
+        Write-Host "Deploy selesai. Site '$siteName' berjalan di port $port."
+
+    # 5. Smoke test - pastikan site benar-benar respond setelah deploy,
+    # bukan cuma "step sukses" tapi site-nya sendiri crash/500.
+    - name: Smoke test
+      if: inputs.deploy == 'true'
+      shell: pwsh
+      run: |
+        $url = "http://localhost:${{ inputs.iis-port }}/"
+        $maxRetries = 5
+        for ($i = 1; $i -le $maxRetries; $i++) {
+          try {
+            $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 10
+            if ($response.StatusCode -eq 200) {
+              Write-Host "Smoke test sukses, status 200 dari $url"
+              exit 0
+            }
+          } catch {
+            Write-Host "Percobaan $i/$maxRetries gagal, retry dalam 3 detik..."
+            Start-Sleep -Seconds 3
+          }
+        }
+        Write-Error "Smoke test gagal setelah $maxRetries percobaan. Site tidak respond di $url"
+        exit 1
