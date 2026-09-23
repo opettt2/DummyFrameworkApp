@@ -7,12 +7,12 @@ on:
       - master
     paths:
       - 'DummyFrameworkApp/**'
-      - '.github/workflows/dotnet-framework.yml'
-      - '.github/action/**'
+      - '.github/workflows/dotnet-framework-pipeline.yml'
+      - '.github/actions/dotnet-framework-build-deploy/action.yml'
 
 jobs:
   build-and-deploy:
-    runs-on: self-hosted # Runner laptop/server build kamu
+    runs-on: windows-latest
 
     steps:
       - name: Checkout Code
