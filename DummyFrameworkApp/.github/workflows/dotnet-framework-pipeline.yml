@@ -8,7 +8,7 @@ on:
       - '.github/workflows/dotnet-framework-pipeline.yml'
       - '.github/action/dotnet-framework-build-deploy/action.yml'
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master","feature/test" ]
     paths:
       - 'DummyFrameworkApp/**'
 
