@@ -34,10 +34,6 @@ runs:
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
 
-    - name: Restore NuGet Packages
-      shell: pwsh
-      run: nuget restore ${{ inputs.solution-path }}
-
     - name: Build and Publish Application
       shell: pwsh
       run: |
