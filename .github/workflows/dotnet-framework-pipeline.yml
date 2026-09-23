@@ -1,48 +1,30 @@
-name: .NET Framework Dummy App - Build & Deploy
+name: Build & Deploy .NET Framework App
 
 on:
   push:
-    branches: [ "main", "master", "feature/test" ]
+    branches:
+      - main
+      - master
     paths:
       - 'DummyFrameworkApp/**'
-      - '.github/workflows/dotnet-framework-pipeline.yml'
-      - '.github/actions/dotnet-framework-build-deploy/action.yml'
-  pull_request:
-    branches: [ "main", "master", "feature/test"]
-    paths:
-      - 'DummyFrameworkApp/**'
-
-concurrency:
-  group: dotnet-framework-pipeline-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
+      - '.github/workflows/dotnet-framework.yml'
+      - '.github/action/**'
 
 jobs:
   build-and-deploy:
-    name: Build & Deploy Dummy Framework App
-    # Wajib Windows runner - MSBuild untuk web project & IIS cuma ada di
-    # Windows. Ganti "windows" (self-hosted) ke "windows-latest" kalau mau
-    # pakai GitHub-hosted runner - tapi GitHub-hosted tidak akan bisa
-    # menjangkau IIS on-prem kantor kamu, jadi cocoknya cuma untuk build/test.
-    runs-on: windows-latest
-
-    timeout-minutes: 20
+    runs-on: self-hosted # Runner laptop/server build kamu
 
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Build & Deploy .NET Framework App
-      uses: ./.github/actions/dotnet-framework-build-deploy
-      with:
-        solution-file: 'DummyFrameworkApp.sln'
-        msbuild-configuration: 'Release'
-        iis-site-name: 'DummyFrameworkApp'
-        iis-port: '8081'
-        deploy-path: 'C:\inetpub\wwwroot\DummyFrameworkApp'
-        # Deploy sungguhan cuma di push ke main/master. Pull request cuma
-        # divalidasi build-nya saja, supaya PR dari feature branch tidak
-        # ikut menimpa deployment production/staging yang sedang jalan.
-        deploy: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push' }}
+      - name: Execute Composite Build & Deploy Action
+        uses: ./.github/action/dotnet-framework-build-deploy
+        with:
+          solution-path: 'DummyFrameworkApp.sln'
+          build-configuration: 'Release'
+          publish-dir: '_publish'
+          target-host: ${{ secrets.DEPLOY_TARGET_HOST }}
+          target-user: ${{ secrets.DEPLOY_TARGET_USER }}
+          target-password: ${{ secrets.DEPLOY_TARGET_PASSWORD }}
+          remote-deploy-path: 'C:\inetpub\wwwroot\DummyFrameworkApp'
